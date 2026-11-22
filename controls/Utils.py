@@ -62,6 +62,7 @@ class Particle:
 class Scenario:
     dt: float
     states: list[TagState]
+    events: dict[int, str] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
         positive(self.dt, "dt")

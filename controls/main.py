@@ -4,7 +4,8 @@ import argparse
 from pathlib import Path
 
 from .Controller import Controller, ControllerConfig
-from .Estimator import Estimator
+from .DataLogger import DataLogger
+from .ParticleFilterEstimator import ParticleFilterEstimator
 from .ReaderPlant import ReaderPlant
 from .RFIDSensor import RFIDConfig, RFIDSensor
 from .ScenarioGenerator import ScenarioGenerator, loadScenarioCSV
@@ -20,6 +21,10 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--dropout", type=float, default=0.05, help="probability per sensor attempt")
     parser.add_argument("--particles", type=int, default=500)
     parser.add_argument("--seed", type=int, default=42)
+    parser.add_argument("--recovery-threshold", type=float, default=0.5,
+                        help="recovered position-error threshold in meters (default: 0.5)")
+    parser.add_argument("--recovery-hold", type=float, default=1.0,
+                        help="required continuous recovery hold in seconds (default: 1)")
     parser.add_argument("--output", type=Path, default=Path("simulation.csv"))
     parser.add_argument("--plot", type=Path, help="optional figure file (requires matplotlib)")
     parser.add_argument("--particle-log", type=Path, help="export particle snapshots as CSV")
@@ -28,7 +33,8 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
     if args.particle_animation and args.particle_animation.suffix.lower() != ".html":
         parser.error("--particle-animation must end in .html")
-    for output in (args.output, args.plot, args.particle_log, args.particle_animation):
+    summaryPath = args.output.with_suffix(".summary.json")
+    for output in (args.output, summaryPath, args.plot, args.particle_log, args.particle_animation):
         if output is not None and output.resolve() == args.scenario.resolve():
             parser.error("Output files must differ from the input scenario CSV")
     try:
@@ -36,8 +42,9 @@ def main(argv: list[str] | None = None) -> int:
         scenario = loadScenarioCSV(args.scenario)
         simulation = Simulation(
             ScenarioGenerator(scenario), RFIDSensor(config, args.seed),
-            Estimator(config, particleCount=args.particles, seed=args.seed + 1),
+            ParticleFilterEstimator(config, particleCount=args.particles, seed=args.seed + 1),
             Controller(ControllerConfig()), ReaderPlant(ReaderState()),
+            DataLogger(recoveryThreshold=args.recovery_threshold, recoveryHoldTime=args.recovery_hold),
         )
     except (OSError, ValueError) as exc:
         parser.error(str(exc))
@@ -50,6 +57,7 @@ def main(argv: list[str] | None = None) -> int:
     logger = simulation.run()
     args.output.parent.mkdir(parents=True, exist_ok=True)
     logger.exportCSV(args.output)
+    logger.exportSummary(summaryPath)
     logger.printStats()
     if args.particle_log:
         args.particle_log.parent.mkdir(parents=True, exist_ok=True)

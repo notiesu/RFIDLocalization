@@ -4,7 +4,9 @@ import csv
 from copy import deepcopy
 from dataclasses import dataclass
 from pathlib import Path
+from math import nan
 
+from .EstimatorDiagnostics import EstimatorDiagnostics
 from .Utils import Particle, ReaderState, RFIDMeasurement, TagState
 
 
@@ -26,18 +28,30 @@ class EstimatorLogEntry:
     measurement: RFIDMeasurement | None
     effectiveSampleSize: float
     resampled: bool  # Whether resampling follows this snapshot
+    diagnostics: EstimatorDiagnostics
 
 
 class EstimatorLogger:
     def __init__(self, enabled: bool = True):
         self.enabled = enabled
         self.entries: list[EstimatorLogEntry] = []
+        self.latestDiagnostics = EstimatorDiagnostics()
 
     def log(
         self, time: float, particles: list[Particle], estimate: TagState | None,
         reader: ReaderState, measurement: RFIDMeasurement | None,
         effectiveSampleSize: float, resampled: bool,
     ) -> None:
+        covariance = (nan, nan, nan)
+        if estimate is not None and particles:
+            dx = [p.state.position.x - estimate.position.x for p in particles]
+            dy = [p.state.position.y - estimate.position.y for p in particles]
+            covariance = (
+                sum(p.weight * x * x for p, x in zip(particles, dx)),
+                sum(p.weight * x * y for p, x, y in zip(particles, dx, dy)),
+                sum(p.weight * y * y for p, y in zip(particles, dy)),
+            )
+        self.latestDiagnostics = EstimatorDiagnostics(*covariance, effectiveSampleSize, resampled)
         if not self.enabled:
             return
         snapshots = tuple(ParticleSnapshot(p.state.position.x, p.state.position.y,
@@ -45,7 +59,7 @@ class EstimatorLogger:
                           for p in particles)
         self.entries.append(EstimatorLogEntry(
             time, snapshots, deepcopy(estimate), deepcopy(reader), deepcopy(measurement),
-            effectiveSampleSize, resampled,
+            effectiveSampleSize, resampled, self.latestDiagnostics,
         ))
 
     def exportCSV(self, filename: str | Path) -> None:
@@ -60,6 +74,7 @@ class EstimatorLogger:
                 "time", "particle_index", "x", "y", "vx", "vy", "weight",
                 "effective_sample_size", "resampled", "measurement_due", "valid",
                 "reader_x", "reader_y", "heading", "est_x", "est_y", "est_vx", "est_vy",
+                "position_cov_xx", "position_cov_xy", "position_cov_yy", "position_uncertainty",
             ])
             for e in self.entries:
                 estimate = e.estimatedTag
@@ -69,6 +84,8 @@ class EstimatorLogger:
                     e.reader.position.x, e.reader.position.y, e.reader.heading,
                     *([estimate.position.x, estimate.position.y, estimate.xdot, estimate.ydot]
                       if estimate is not None else [""] * 4),
+                    e.diagnostics.covarianceXX, e.diagnostics.covarianceXY,
+                    e.diagnostics.covarianceYY, e.diagnostics.positionUncertainty,
                 ]
                 if not e.particles:
                     writer.writerow([e.time, *[""] * 6, *metadata])
@@ -78,3 +95,4 @@ class EstimatorLogger:
 
     def clear(self) -> None:
         self.entries.clear()
+        self.latestDiagnostics = EstimatorDiagnostics()

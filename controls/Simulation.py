@@ -8,12 +8,13 @@ from .Estimator import Estimator
 from .ReaderPlant import ReaderPlant
 from .RFIDSensor import RFIDSensor
 from .ScenarioGenerator import ScenarioGenerator
-from .Utils import ControlCommand, RFIDMeasurement
+from .Utils import ControlCommand, RFIDMeasurement, ReaderState, TagState
 
 
 class Simulation:
     def __init__(
-        self, scenario: ScenarioGenerator, sensor: RFIDSensor, estimator: Estimator,
+        self, scenario: ScenarioGenerator, sensor: RFIDSensor,
+        estimator: Estimator[TagState, RFIDMeasurement, ReaderState],
         controller: Controller, plant: ReaderPlant, logger: DataLogger | None = None,
     ):
         self.scenario = scenario
@@ -22,6 +23,10 @@ class Simulation:
         self.controller = controller
         self.plant = plant
         self.logger = logger if logger is not None else DataLogger()
+        if self.logger.maxVelocity is None:
+            self.logger.maxVelocity = controller.config.maxVelocity
+        if self.logger.maxTurnRate is None:
+            self.logger.maxTurnRate = controller.config.maxTurnRate
         self.timestep = scenario.scenario.dt
         if sensor.config.updateRate * self.timestep > 1.0 + 1e-12:
             raise ValueError("Simulation dt must be <= 1 / sensor updateRate")
@@ -43,7 +48,8 @@ class Simulation:
         command = self.controller.compute(estimate, reader) if estimate is not None else ControlCommand()
         entry = LogEntry(time, trueTag, estimate, reader,
                          measurement if measurement is not None else RFIDMeasurement(uncertainty=self.sensor.config.rssiStdDev),
-                         command, due)
+                         command, due, self.estimator.diagnostics,
+                         self.scenario.scenario.events.get(self.scenario.index - 1, ""))
         # Every logged state and measurement describes t, before applying u[t].
         self.logger.log(entry)
         if self.scenario.index < len(self.scenario.scenario.states):

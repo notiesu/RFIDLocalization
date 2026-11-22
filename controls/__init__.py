@@ -6,15 +6,18 @@ from .ReaderPlant import ReaderPlant
 from .ScenarioGenerator import ScenarioGenerator, loadScenarioCSV
 from .Controller import ControllerConfig, Controller
 from .Estimator import Estimator
+from .ParticleFilterEstimator import ParticleFilterEstimator
 from .EstimatorLogger import EstimatorLogger, EstimatorLogEntry, ParticleSnapshot
+from .EstimatorDiagnostics import EstimatorDiagnostics
 from .DataLogger import LogEntry, DataLogger
 from .Simulation import Simulation
 
 __all__ = [
     "Coord", "TagState", "ReaderState", "RFIDMeasurement", "ControlCommand",
     "Particle", "Scenario", "RFIDConfig", "RFIDSensor", "ReaderPlant",
-    "ScenarioGenerator", "ControllerConfig", "Controller", "Estimator",
+    "ScenarioGenerator", "ControllerConfig", "Controller", "Estimator", "ParticleFilterEstimator",
     "LogEntry", "DataLogger", "Simulation",
     "EstimatorLogger", "EstimatorLogEntry", "ParticleSnapshot",
     "loadScenarioCSV",
+    "EstimatorDiagnostics",
 ]

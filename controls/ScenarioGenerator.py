@@ -12,12 +12,14 @@ def loadScenarioCSV(filename: str | Path) -> Scenario:
     """Load time,x,y,vx,vy in seconds, meters, and meters/second.
 
     The fixed-step simulator requires >=2 rows, starting at zero with uniform
-    positive time spacing. Extra named columns are ignored. No interpolation or
-    velocity inference is performed; the external generator supplies all states.
+    positive time spacing. Optional event labels mark recovery-clock starts for
+    offline logging; other extra columns are ignored. No interpolation or velocity
+    inference is performed; the external generator supplies all states.
     """
     columns = ("time", "x", "y", "vx", "vy")
     times = []
     states = []
+    events = {}
     try:
         with open(filename, newline="", encoding="utf-8-sig") as file:
             reader = csv.DictReader(file, strict=True)
@@ -35,6 +37,9 @@ def loadScenarioCSV(filename: str | Path) -> Scenario:
                     raise ValueError(f"{filename}: row {reader.line_num} contains non-finite values")
                 times.append(time)
                 states.append(TagState(Coord(x, y), vx, vy))
+                event = (row.get("event") or "").strip()
+                if event:
+                    events[len(states) - 1] = event
     except csv.Error as exc:
         raise ValueError(f"{filename}: invalid CSV: {exc}") from exc
     if len(states) < 2:
@@ -47,7 +52,7 @@ def loadScenarioCSV(filename: str | Path) -> Scenario:
         for index, (previous, current) in enumerate(zip(times, times[1:]), start=1)
     ):
         raise ValueError(f"{filename}: timestamps must increase at a uniform positive timestep")
-    return Scenario(dt, states)
+    return Scenario(dt, states, events)
 
 
 class ScenarioGenerator:

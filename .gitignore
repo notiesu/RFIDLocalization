@@ -38,3 +38,17 @@ codegen/
 # SimBiology backup files
 *.sbproj.backup
 *.sbproj.bak
+
+# Python prototype and demo output
+__pycache__/
+*.py[cod]
+.venv/
+simulation.csv
+output/
+*.o
+*.a
+
+#deprecate cpp
+*.cpp
+*.h
+*.hpp
