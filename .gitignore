@@ -43,6 +43,7 @@ codegen/
 __pycache__/
 *.py[cod]
 .venv/
+.ipynb_checkpoints/
 simulation.csv
 output/
 *.o

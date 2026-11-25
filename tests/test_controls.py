@@ -93,7 +93,7 @@ class PortTests(unittest.TestCase):
                 logger.exportCSV(path)
             with path.open(newline="") as file:
                 rows = list(csv.DictReader(file))
-            self.assertEqual(len(rows[0]), 33)
+            self.assertEqual(len(rows[0]), 41)
             self.assertEqual(float(rows[0]["true_x"]), 3)
             self.assertEqual(float(rows[0]["command_turnRate"]), 0.2)
             self.assertEqual(float(rows[0]["estimation_error"]), 5)

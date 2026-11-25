@@ -163,6 +163,20 @@ class DataLogger:
             "recoveryHoldTime": self.recoveryHoldTime,
         }
         result["recoveryEvents"] = self.recoveryStats()
+        diagnostics = [e.diagnostics for e in self.entries]
+        nis = [d.normalizedInnovationSquared for d in diagnostics if isfinite(d.normalizedInnovationSquared)]
+        ekfDiagnostics = [d for d in diagnostics if d.innovationGateMode]
+        result.update(
+            innovationTests=len(nis),
+            innovationOutliers=sum(d.innovationOutlier is True for d in diagnostics),
+            measurementUpdatesAccepted=sum(d.measurementAccepted is True for d in diagnostics),
+            measurementUpdatesRejected=sum(d.measurementAccepted is False for d in diagnostics),
+            innovationGatedUpdates=sum(d.measurementRejectionReason == "innovation_gate" for d in diagnostics),
+            meanNIS=sum(nis) / len(nis) if nis else nan,
+            maxNIS=max(nis, default=nan),
+            innovationGateMode=ekfDiagnostics[-1].innovationGateMode if ekfDiagnostics else None,
+            innovationGateThreshold=ekfDiagnostics[-1].innovationGateThreshold if ekfDiagnostics else None,
+        )
         return result
 
     def printStats(self) -> None:
@@ -183,6 +197,9 @@ class DataLogger:
         print(f"Uncertainty time coverage: {s['uncertaintyTimeCoverage']:.3f}%")
         print(f"Max tracking distance: {s['maxTrackingDistance']:.3f} m")
         print(f"Time at command limits (speed/turn): {s['speedLimitUsage']:.3f}% / {s['turnRateLimitUsage']:.3f}%")
+        if s["innovationGateMode"]:
+            print(f"Innovation gate: {s['innovationGateMode']} | threshold: {s['innovationGateThreshold']:.3f}")
+            print(f"NIS checks/outliers/rejected: {s['innovationTests']} / {s['innovationOutliers']} / {s['measurementUpdatesRejected']}")
         print(f"Recovery rule: error <= {self.recoveryThreshold:g} m for {self.recoveryHoldTime:g} s with valid RFID")
         for event in s["recoveryEvents"]:
             recovery = f"{event['recoveryTime']:.3f} s" if event['recoveryTime'] is not None else event['status']
@@ -202,6 +219,9 @@ class DataLogger:
                 "position_cov_xx", "position_cov_xy", "position_cov_yy", "position_uncertainty",
                 "effective_sample_size", "resampled", "rfid_available",
                 "speed_at_limit", "turn_rate_at_limit", "event",
+                "innovation_rssi", "innovation_bearing", "normalized_innovation_squared",
+                "innovation_gate_threshold", "innovation_gate_mode", "innovation_outlier",
+                "measurement_accepted", "measurement_rejection_reason",
             ])
             for e, available in zip(self.entries, self._availability()):
                 estimate = e.estimatedTag
@@ -219,6 +239,12 @@ class DataLogger:
                     int(e.diagnostics.resampled), int(available),
                     int(speedAtLimit) if speedAtLimit is not None else "",
                     int(turnAtLimit) if turnAtLimit is not None else "", e.event,
+                    e.diagnostics.innovationRSSI, e.diagnostics.innovationBearing,
+                    e.diagnostics.normalizedInnovationSquared, e.diagnostics.innovationGateThreshold,
+                    e.diagnostics.innovationGateMode,
+                    int(e.diagnostics.innovationOutlier) if e.diagnostics.innovationOutlier is not None else "",
+                    int(e.diagnostics.measurementAccepted) if e.diagnostics.measurementAccepted is not None else "",
+                    e.diagnostics.measurementRejectionReason,
                 ])
         print(f"Exported {len(self.entries)} samples to {filename}")
 
