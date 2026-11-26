@@ -10,10 +10,10 @@ block.DialogPrmsTunable={'Nontunable','Nontunable','Nontunable'};
 switch role
     case 'scenario', inputs=[]; outputs=4;
     case 'sensor', inputs=[4 5]; outputs=6;
-    case 'estimator', inputs=[6 5]; outputs=7;
-    case 'controller', inputs=[7 5 1]; outputs=2;
+    case 'estimator', inputs=[6 5]; outputs=[4 1 1 1];
+    case 'controller', inputs=[4 5 1 1 1 1]; outputs=2;
     case 'plant', inputs=2; outputs=5;
-    case 'logger', inputs=[4 7 5 6 2]; outputs=[];
+    case 'logger', inputs=[4 4 5 6 2 1 1]; outputs=[];
     otherwise, error('controls:Role','Unknown block role.');
 end
 block.NumInputPorts=numel(inputs); block.NumOutputPorts=numel(outputs);
@@ -67,7 +67,7 @@ out={};
 switch role
     case 'scenario'
         index=round(time/c.dt)+1;
-        assert(index>=1&&index<=numel(c.states),'controls:Time','Simulink exceeded the CSV trajectory.');
+        assert(index>=1&&index<=numel(c.states),'controls:Time','Simulink exceeded the supplied trajectory.');
         out={controls.Utils.stateVector(c.states(index))};
     case 'plant'
         state=data.component.getState(); out={[state.position.x;state.position.y;state.heading;state.velocity;state.turnSpeed]};
@@ -85,21 +85,23 @@ switch role
         if v(5)~=0, m=controls.Utils.measurement(v(1),v(2)~=0,v(3),v(4)); end
         reader=unpackReader(block.InputPort(2).Data);
         estimate=data.component.update(m,reader,c.dt,round(time/c.dt)~=0);
-        signal=[nan(4,1);0;NaN;v(6)];
-        if ~isempty(estimate), signal=[controls.Utils.stateVector(estimate);1;data.component.currentUncertainty;v(6)]; end
-        out={signal};
+        % Separate state, uncertainty, initialization and availability signals.
+        out={nan(4,1),NaN,0,v(6)};
+        if ~isempty(estimate)
+            out={controls.Utils.stateVector(estimate),data.component.currentUncertainty,1,v(6)};
+        end
     case 'controller'
         vector=block.InputPort(1).Data; mode=block.InputPort(3).Data;
         assert(ismember(mode,[0 1 2]),'controls:Controller','Invalid controller selection.');
         command=controls.Utils.command();
-        if vector(5)~=0&&mode~=0
-            estimate=controls.Utils.vectorState(vector(1:4)); reader=unpackReader(block.InputPort(2).Data);
-            command=data.component.compute(estimate,reader,vector(6),vector(7)~=0,mode);
+        if block.InputPort(5).Data~=0&&mode~=0
+            estimate=controls.Utils.vectorState(vector); reader=unpackReader(block.InputPort(2).Data);
+            command=data.component.compute(estimate,reader,block.InputPort(4).Data,block.InputPort(6).Data~=0,mode);
         end
         out={[command.turnRate;command.velocity]};
     case 'logger'
-        tag=controls.Utils.vectorState(block.InputPort(1).Data); v=block.InputPort(2).Data; estimate=[]; uncertainty=v(6);
-        if v(5)~=0, estimate=controls.Utils.vectorState(v(1:4)); end
+        tag=controls.Utils.vectorState(block.InputPort(1).Data); estimate=[]; uncertainty=block.InputPort(6).Data;
+        if block.InputPort(7).Data~=0, estimate=controls.Utils.vectorState(block.InputPort(2).Data); end
         reader=unpackReader(block.InputPort(3).Data); v=block.InputPort(4).Data;
         m=controls.Utils.measurement(v(1),v(2)~=0,v(3),v(4)); due=v(5)~=0;
         commandVector=block.InputPort(5).Data; command=controls.Utils.command(commandVector(1),commandVector(2));
@@ -122,15 +124,10 @@ end
 end
 
 function terminate(block)
-role=char(block.DialogPrm(1).Data); c=settings(block,2);
+role=char(block.DialogPrm(1).Data);
 data=get_param(block.BlockHandle,'UserData');
 if strcmp(role,'logger')&&isstruct(data)&&isa(data.component,'controls.DataLogger')
-    logger=data.component; assignin('base','trackingLog',logger);
-    completed=numel(logger.entries)==round(c.stopTime/c.dt)+1;
-    if ~isempty(c.output)&&completed
-        logger.exportCSV(c.output);
-    end
-
+    assignin('base','trackingLog',data.component);
 end
 end
 
@@ -138,7 +135,11 @@ function value=settings(block,index)
 % Dialog parameters are variable-name strings, never custom MATLAB objects.
 % Values live in this model's workspace, not the caller's/base workspace.
 workspace=get_param(bdroot(block.BlockHandle),'ModelWorkspace');
-value=evalin(workspace,char(block.DialogPrm(index).Data));
+% evalin is rejected while Simulink locks the workspace during compilation.
+% Read the named variable directly, then select any requested struct fields.
+parts=strsplit(char(block.DialogPrm(index).Data),'.');
+value=getVariable(workspace,parts{1});
+for i=2:numel(parts), value=value.(parts{i}); end
 end
 
 function reader=unpackReader(v)

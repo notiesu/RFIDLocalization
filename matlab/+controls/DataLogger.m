@@ -97,7 +97,7 @@ classdef DataLogger < handle
                     double(e.measurement.isValid) e.measurement.bearing double(e.measurementDue) double(available(i)) ...
                     error e.uncertainty distance e.command.velocity e.command.turnRate]) {e.event}];
             end
-            controls.Utils.ensureParent(file); writecell([names;rows],file);
+            writecell([names;rows],file);
         end
         function printStats(obj)
             s=obj.stats();

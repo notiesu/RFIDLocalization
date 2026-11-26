@@ -2,6 +2,11 @@ classdef ScenarioGenerator
     methods (Static)
         function scenario=loadCSV(file)
             data=readtable(file,'VariableNamingRule','preserve','TextType','string');
+            scenario=controls.ScenarioGenerator.fromTable(data);
+        end
+
+        function scenario=fromTable(data)
+            assert(istable(data),'controls:Scenario','Supply a trajectory table or CSV filename.');
             fields={'time','x','y','vx','vy'};
             assert(all(ismember(fields,data.Properties.VariableNames)),'controls:CSV','Required columns: time,x,y,vx,vy.');
             values=data{:,fields}; n=size(values,1);

@@ -46,8 +46,5 @@ classdef Utils
             assert(isnumeric(v)&&isscalar(v)&&isfinite(v)&&(v>0||(allowZero&&v==0)),...
                 'controls:Value','Invalid %s.',name);
         end
-        function ensureParent(file)
-            folder=fileparts(file); if ~isempty(folder)&&~isfolder(folder), mkdir(folder); end
-        end
     end
 end

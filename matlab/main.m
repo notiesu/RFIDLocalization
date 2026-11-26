@@ -1,10 +1,14 @@
-function [logger,config]=main(scenarioFile,varargin)
-% Run the assignment Simulink model; no duplicate MATLAB-only simulation loop.
-[modelFile,config]=buildSimulinkModel(scenarioFile,varargin{:});
-load_system(modelFile); cleanup=onCleanup(@()close_system('rfid_tracking',0));
-sim('rfid_tracking'); logger=evalin('base','trackingLog');
-metrics=logger.stats(); entries=logger.entries;
-[folder,name,~]=fileparts(config.output); save(fullfile(folder,[name '.mat']),'config','metrics','entries');
-logger.printStats();
-if config.plot, plotResults(logger,fullfile(folder,[name '.png'])); end
+function config=main(scenarioFile,varargin)
+% Initialize the saved model. Use Simulink Run to execute the simulation.
+root=setupControls();
+if nargin<1, scenarioFile=generateAssignmentScenario('straight'); end
+[config,scenario]=initControls(scenarioFile,varargin{:});
+modelFile=fullfile(root,'models','rfid_tracking.slx');
+assert(isfile(modelFile),'controls:ModelMissing','Missing model: %s. Restore the saved SLX file.',modelFile);
+% load_system preserves the model if it is already open, including GUI edits.
+load_system(modelFile);
+workspace=get_param('rfid_tracking','ModelWorkspace');
+assignin(workspace,'controlConfig',config);
+assignin(workspace,'controlScenario',scenario);
+open_system('rfid_tracking');
 end

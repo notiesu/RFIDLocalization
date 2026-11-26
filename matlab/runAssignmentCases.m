@@ -1,12 +1,14 @@
-function results=runAssignmentCases()
+function [results,logs]=runAssignmentCases()
 % Assignment analyses: 3 paths x fixed/baseline/final, plus 2 non-nominal cases.
-root=setupControls(); cases={'straight','turning','abrupt_maneuver'};
-modes={'fixed','baseline','final'}; rows=cell(0,16);
+setupControls(); cases={'straight','turning','abrupt_maneuver'};
+modes={'fixed','baseline','final'}; rows=cell(0,16); logs=struct();
 for i=1:numel(cases)
     for mode=0:2
         name=[cases{i} '_' modes{mode+1}]; sensor=controls.RFIDConfig();
-        [logger,config]=main(fullfile(root,'scenarios','assignment',[cases{i} '.csv']),...
-            'controllerMode',mode,'sensorConfig',sensor,'output',fullfile(root,'output',[name '.csv']));
+        config=main(generateAssignmentScenario(cases{i}),...
+            'controllerMode',mode,'sensorConfig',sensor);
+        sim('rfid_tracking'); logger=evalin('base','trackingLog');
+        logs.(name)=logger;
         rows(end+1,:)=summaryRow(name,logger,config.requirements); %#ok<AGROW>
     end
 end
@@ -14,14 +16,16 @@ for condition={'increased_rssi_noise','increased_dropout'}
     name=condition{1}; sensor=controls.RFIDConfig();
     if strcmp(name,'increased_rssi_noise'), sensor.rssiStdDev=4;
     else, sensor.dropoutProbability=0.2; end
-    [logger,config]=main(fullfile(root,'scenarios','assignment','abrupt_maneuver.csv'),...
-        'controllerMode',2,'sensorConfig',sensor,'output',fullfile(root,'output',[name '.csv']));
+    config=main(generateAssignmentScenario('abrupt_maneuver'),...
+        'controllerMode',2,'sensorConfig',sensor);
+    sim('rfid_tracking'); logger=evalin('base','trackingLog');
+    logs.(name)=logger;
     rows(end+1,:)=summaryRow(name,logger,config.requirements); %#ok<AGROW>
 end
 names={'Case','PositionRMSE','MaxError','ValidTimePercent','MeanUncertainty','MaxUncertainty',...
     'MeanSeparation','MaxSeparation','SpeedLimitTimePercent','TurnLimitTimePercent','MaxRecoveryTime',...
     'AccuracyMet','AvailabilityMet','ActuatorLimitsMet','RecoveryMet','UnrecoveredEvents'};
-results=cell2table(rows,'VariableNames',names); writetable(results,fullfile(root,'output','comparison.csv')); disp(results);
+results=cell2table(rows,'VariableNames',names);
 end
 
 function row=summaryRow(name,logger,requirements)
